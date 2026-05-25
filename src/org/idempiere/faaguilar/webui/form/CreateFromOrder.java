@@ -193,6 +193,7 @@ public abstract class CreateFromOrder extends CreateFrom {
                 } else {
                     orderLine.setC_Charge_ID(rLine.getC_Charge_ID());
                 }
+                orderLine.setPriceEntered(rLine.getPriceActual());
                 orderLine.setPriceActual(rLine.getPriceActual());
                 orderLine.setAD_Org_ID(rLine.getAD_Org_ID());
                 orderLine.setQty(rLine.getQty());
