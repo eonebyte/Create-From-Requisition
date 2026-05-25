@@ -28,6 +28,7 @@ import org.compiere.model.GridTab;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MProduct;
+import org.compiere.model.MRequisition;
 import org.compiere.model.MRequisitionLine;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
@@ -146,12 +147,44 @@ public abstract class CreateFromOrder extends CreateFrom {
         if (log.isLoggable(Level.CONFIG))
             log.config(order.toString());
 
+        boolean headerUpdated = false;
+
         for (int i = 0; i < miniTable.getRowCount(); i++) {
             if ((Boolean) miniTable.getValueAt(i, 0)) {
                 KeyNamePair pp = (KeyNamePair) miniTable.getValueAt(i, 2);
                 int M_RequisitionLine_ID = pp.getKey();
                 MRequisitionLine rLine = new MRequisitionLine(Env.getCtx(), M_RequisitionLine_ID, trxName);
 
+                /*
+                 * UPDATE HEADER ORDER
+                 */
+                if (!headerUpdated) {
+
+                    int M_Requisition_ID = rLine.getM_Requisition_ID();
+
+                    MRequisition req = new MRequisition(
+                            Env.getCtx(),
+                            M_Requisition_ID,
+                            trxName);
+
+                    // Department
+                    order.set_ValueOfColumn(
+                            "C_Department_ID",
+                            req.get_Value("C_Department_ID"));
+
+                    // Cost Center
+                    order.set_ValueOfColumn(
+                            "C_CostCenter_ID",
+                            req.get_Value("C_CostCenter_ID"));
+
+                    order.saveEx();
+
+                    headerUpdated = true;
+                }
+
+                /*
+                 * CREATE ORDER LINE
+                 */
                 MOrderLine orderLine = new MOrderLine(order);
                 orderLine.setDatePromised(rLine.getDateRequired());
                 if (rLine.getM_Product_ID() > 0) {
