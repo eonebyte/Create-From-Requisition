@@ -28,6 +28,7 @@ import org.compiere.model.GridTab;
 import org.compiere.model.MOrder;
 import org.compiere.model.MOrderLine;
 import org.compiere.model.MProduct;
+import org.compiere.model.MBPartner;
 import org.compiere.model.MRequisition;
 import org.compiere.model.MRequisitionLine;
 import org.compiere.util.DB;
@@ -55,7 +56,8 @@ public abstract class CreateFromOrder extends CreateFrom {
         return true;
     }
 
-    protected Vector<Vector<Object>> getRequisitionData(Object Requisition, Object Org, Object User) {
+    protected Vector<Vector<Object>> getRequisitionData(Object Requisition, Object Org, Object User,
+            Object CostCenter) {
         Vector<Vector<Object>> data = new Vector<>();
         StringBuilder sql = new StringBuilder(
                 "SELECT r.M_Requisition_ID, r.DocumentNo, r.DateRequired, r.PriorityRule, rl.M_Product_ID,")
@@ -77,6 +79,8 @@ public abstract class CreateFromOrder extends CreateFrom {
             sql.append(" AND r.AD_Org_ID = ?");
         if (User != null)
             sql.append(" AND r.AD_User_ID = ?");
+        if (CostCenter != null)
+            sql.append(" AND r.C_CostCenter_ID = ?");
 
         PreparedStatement pstmt = null;
         ResultSet rs = null;
@@ -89,6 +93,8 @@ public abstract class CreateFromOrder extends CreateFrom {
                 pstmt.setInt(i++, (Integer) Org);
             if (User != null)
                 pstmt.setInt(i++, (Integer) User);
+            if (CostCenter != null)
+                pstmt.setInt(i++, (Integer) CostCenter);
 
             rs = pstmt.executeQuery();
             while (rs.next()) {
@@ -149,6 +155,12 @@ public abstract class CreateFromOrder extends CreateFrom {
 
         boolean headerUpdated = false;
 
+        int taxIdToUse = 1000012;
+        MBPartner bp = MBPartner.get(Env.getCtx(), order.getC_BPartner_ID());
+        if (bp != null && bp.isPOTaxExempt()) {
+            taxIdToUse = 1000002; // Non-PPN / Exempt
+        }
+
         for (int i = 0; i < miniTable.getRowCount(); i++) {
             if ((Boolean) miniTable.getValueAt(i, 0)) {
                 KeyNamePair pp = (KeyNamePair) miniTable.getValueAt(i, 2);
@@ -188,8 +200,41 @@ public abstract class CreateFromOrder extends CreateFrom {
                 MOrderLine orderLine = new MOrderLine(order);
                 orderLine.setDatePromised(rLine.getDateRequired());
                 if (rLine.getM_Product_ID() > 0) {
-                    orderLine.setProduct(MProduct.get(Env.getCtx(), rLine.getM_Product_ID()));
+                    // orderLine.setProduct(MProduct.get(Env.getCtx(), rLine.getM_Product_ID()));
+                    orderLine.setM_Product_ID(rLine.getM_Product_ID());
                     orderLine.setM_AttributeSetInstance_ID(rLine.getM_AttributeSetInstance_ID());
+
+                    MProduct product = orderLine.getProduct();
+                    Object whCatValue = product.get_Value("LCO_WithholdingCategory_ID");
+                    int withholdingCatId = 0;
+
+                    if (whCatValue != null) {
+                        withholdingCatId = ((Integer) whCatValue).intValue();
+                    }
+
+                    if (withholdingCatId > 0) {
+                        orderLine.set_ValueOfColumn("ADW_IsWithholding", "Y");
+
+                        // Ambil rate dengan optimized JOIN query
+                        String sqlTax = "SELECT ct.rate FROM c_tax ct "
+                                + "INNER JOIN LCO_WithholdingCalc lwc ON ct.c_tax_id = lwc.c_tax_id "
+                                + "INNER JOIN LCO_WithholdingRule lwr ON lwc.lco_withholdingcalc_id = lwr.lco_withholdingcalc_id "
+                                + "INNER JOIN M_Product mp ON lwr.lco_withholdingcategory_id = mp.lco_withholdingcategory_id "
+                                + "WHERE mp.M_Product_ID = ?";
+
+                        // Mengambil nilai BigDecimal secara aman dari DB util iDempiere
+                        BigDecimal rate = DB.getSQLValueBD(trxName, sqlTax, product.getM_Product_ID());
+                        if (rate != null) {
+                            orderLine.set_ValueOfColumn("ADW_WithholdingRate", rate);
+                        } else {
+                            orderLine.set_ValueOfColumn("ADW_WithholdingRate", BigDecimal.ZERO);
+                        }
+                    } else {
+                        // Jika kriteria withholding tidak terpenuhi, set default kosong/nol
+                        orderLine.set_ValueOfColumn("ADW_IsWithholding", "N");
+                        orderLine.set_ValueOfColumn("ADW_WithholdingRate", BigDecimal.ZERO);
+                    }
+
                 } else {
                     orderLine.setC_Charge_ID(rLine.getC_Charge_ID());
                 }
@@ -197,6 +242,7 @@ public abstract class CreateFromOrder extends CreateFrom {
                 orderLine.setPriceActual(rLine.getPriceActual());
                 orderLine.setAD_Org_ID(rLine.getAD_Org_ID());
                 orderLine.setQty(rLine.getQty());
+                orderLine.setC_Tax_ID(taxIdToUse); // PPN 12 % DPP Nilai Lain / Tax Exempt
                 orderLine.saveEx();
 
                 rLine.setC_OrderLine_ID(orderLine.getC_OrderLine_ID());

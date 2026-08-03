@@ -67,6 +67,9 @@ public class WCreateFromOrderUI extends CreateFromOrder implements EventListener
 	protected Label orgLabel = new Label(Msg.translate(Env.getCtx(), "Org"));
 	protected WTableDirEditor orgLookup;
 
+	protected Label costCenterLabel = new Label(Msg.translate(Env.getCtx(), "CostCenter"));
+	protected WTableDirEditor costCenterLookup;
+
 	public WCreateFromOrderUI(GridTab tab) {
 		super(tab);
 		log.info(getGridTab().toString());
@@ -132,6 +135,14 @@ public class WCreateFromOrderUI extends CreateFromOrder implements EventListener
 		orgLookup.setValue(getGridTab().getValue("AD_Org_ID"));
 		orgLookup.getComponent().addEventListener(Events.ON_CHANGE, this);
 
+		lookup = MLookupFactory.get(
+				Env.getCtx(), p_WindowNo, 0,
+				MColumn.getColumn_ID(MRequisition.Table_Name, "C_CostCenter_ID"),
+				DisplayType.TableDir);
+		costCenterLookup = new WTableDirEditor("C_CostCenter_ID", false, false, true, lookup);
+		costCenterLookup.setValue(getGridTab().getValue("C_CostCenter_ID"));
+		costCenterLookup.getComponent().addEventListener(Events.ON_CHANGE, this);
+
 		return true;
 	}
 
@@ -139,6 +150,7 @@ public class WCreateFromOrderUI extends CreateFromOrder implements EventListener
 		requisitionLabel.setText(Msg.getElement(Env.getCtx(), "M_Requisition_ID"));
 		userLabel.setText(Msg.getElement(Env.getCtx(), "AD_User_ID", false));
 		orgLabel.setText(Msg.getElement(Env.getCtx(), "AD_Org_ID", false));
+		costCenterLabel.setText(Msg.getElement(Env.getCtx(), "C_CostCenter_ID", false));
 
 		Borderlayout parameterLayout = new Borderlayout();
 		parameterLayout.setHeight("130px");
@@ -181,8 +193,10 @@ public class WCreateFromOrderUI extends CreateFromOrder implements EventListener
 		Row row2 = rows.newRow();
 		row2.appendChild(userLabel.rightAlign());
 		row2.appendChild(userLookup.getComponent());
-		row2.appendChild(new Label()); // placeholder
-		row2.appendChild(new Label()); // placeholder
+		row2.appendChild(costCenterLabel.rightAlign());
+		row2.appendChild(costCenterLookup.getComponent());
+		// row2.appendChild(new Label()); // placeholder
+		// row2.appendChild(new Label()); // placeholder
 	}
 
 	@Override
@@ -199,7 +213,8 @@ public class WCreateFromOrderUI extends CreateFromOrder implements EventListener
 		loadTableOIS(getRequisitionData(
 				requisitionLookup.getValue(),
 				orgLookup.getValue(),
-				userLookup.getValue()));
+				userLookup.getValue(),
+				costCenterLookup.getValue()));
 	}
 
 	protected void loadTableOIS(Vector<?> data) {
